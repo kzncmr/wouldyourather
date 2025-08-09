@@ -8,6 +8,16 @@ const path = require('path');
 const app = express();
 const adapter = new FileSync('db.json');
 const db = low(adapter);
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "supersecretadmintoken";
+
+// Admin doğrulama middleware'i
+function isAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  if (token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: "Unauthorized: Admins only" });
+  }
+  next();
+}
 
 // Varsayılan (kodda tutulan) soru listesi
 const defaultQuestions = {
@@ -1340,17 +1350,15 @@ app.get('/questions/:category', (req, res) => {
   res.json(questions);
 });
 
-// Yeni soru ekleme endpointi
-app.post('/questions/:category/add', (req, res) => {
+// --- Soru Ekleme ---
+app.post('/questions/:category/add', isAdmin, (req, res) => {
   const { category } = req.params;
   const question = req.body;
 
-  // Kategori var mı kontrolü
   if (!db.get(`questions.${category}`).value()) {
     return res.status(404).json({ error: 'Category not found' });
   }
 
-  // Gerekirse yeni id ekle
   if (!question.id) {
     question.id = uuidv4();
   }
@@ -1359,6 +1367,46 @@ app.post('/questions/:category/add', (req, res) => {
 
   db.get(`questions.${category}`).push(question).write();
   res.json({ success: true, question });
+});
+
+// --- Soru Silme ---
+app.delete('/questions/:category/:questionId', isAdmin, (req, res) => {
+  const { category, questionId } = req.params;
+
+  if (!db.get(`questions.${category}`).value()) {
+    return res.status(404).json({ error: 'Category not found' });
+  }
+
+  const exists = db.get(`questions.${category}`).find({ id: questionId }).value();
+  if (!exists) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
+
+  db.get(`questions.${category}`).remove({ id: questionId }).write();
+  res.json({ success: true });
+});
+
+// --- Soru Düzenleme ---
+app.put('/questions/:category/:questionId', isAdmin, (req, res) => {
+  const { category, questionId } = req.params;
+  const updated = req.body;
+
+  if (!db.get(`questions.${category}`).value()) {
+    return res.status(404).json({ error: 'Category not found' });
+  }
+
+  const exists = db.get(`questions.${category}`).find({ id: questionId }).value();
+  if (!exists) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
+
+  db.get(`questions.${category}`)
+    .find({ id: questionId })
+    .assign(updated)
+    .write();
+  
+  const newQuestion = db.get(`questions.${category}`).find({ id: questionId }).value();
+  res.json({ success: true, question: newQuestion });
 });
 
 // Oy verme endpointi
