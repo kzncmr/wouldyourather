@@ -1409,6 +1409,29 @@ app.put('/questions/:category/:questionId', isAdmin, (req, res) => {
   res.json({ success: true, question: newQuestion });
 });
 
+app.post('/questions/:category/bulk-add', isAdmin, (req, res) => {
+  const { category } = req.params;
+  const questions = req.body; // Dizi bekleniyor
+
+  if (!Array.isArray(questions)) {
+    return res.status(400).json({ error: 'Body must be an array' });
+  }
+  if (!db.get(`questions.${category}`).value()) {
+    return res.status(404).json({ error: 'Category not found' });
+  }
+
+  const added = [];
+  questions.forEach(question => {
+    if (!question.id) question.id = uuidv4();
+    question.votes1 = question.votes1 || 0;
+    question.votes2 = question.votes2 || 0;
+    db.get(`questions.${category}`).push(question).write();
+    added.push(question);
+  });
+
+  res.json({ success: true, added });
+});
+
 // Oy verme endpointi
 app.post('/vote/:questionId/:option', (req, res) => {
   const { questionId, option } = req.params;
